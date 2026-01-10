@@ -17,6 +17,14 @@ import { StatsModule } from './stats/stats.module';
         const databaseUrl = configService.get<string>('DATABASE_URL') || 
                            configService.get<string>('POSTGRES_URL');
         
+        // Log connection info (without password for security)
+        if (databaseUrl) {
+          const urlWithoutPassword = databaseUrl.replace(/:[^:@]+@/, ':****@');
+          console.log('Database URL found:', urlWithoutPassword);
+        } else {
+          console.warn('No DATABASE_URL or POSTGRES_URL found in environment variables');
+        }
+        
         return {
           type: 'postgres',
           ...(databaseUrl
@@ -52,6 +60,11 @@ import { StatsModule } from './stats/stats.module';
           entities: [__dirname + '/**/*.entity{.ts,.js}'],
           synchronize: configService.get<string>('NODE_ENV') !== 'production', // Only in development
           autoLoadEntities: true,
+          // Reduce retries for serverless to avoid timeouts
+          retryAttempts: 1, // Only retry once in serverless
+          retryDelay: 1000, // 1 second delay
+          // Connection timeout
+          connectTimeoutMS: 5000, // 5 seconds timeout
         };
       },
       inject: [ConfigService],
