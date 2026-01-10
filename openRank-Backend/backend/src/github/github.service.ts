@@ -76,9 +76,20 @@ export class GitHubService {
         searchQuery += ` stars:>=${minStars}`;
       }
 
+      // GitHub API only supports: stars, forks, updated, help-wanted-issues
+      // Convert our sort values to GitHub API format
+      let githubSort = 'stars'; // default
+      if (sort === 'Stars' || sort === 'stars' || sort === 'Rank') {
+        githubSort = 'stars';
+      } else if (sort === 'Forks' || sort === 'forks') {
+        githubSort = 'forks';
+      } else if (sort === 'updated' || sort === 'Recently Updated') {
+        githubSort = 'updated';
+      }
+
       const params = new URLSearchParams({
         q: searchQuery,
-        sort: sort === 'Stars' ? 'stars' : sort === 'Forks' ? 'forks' : 'updated',
+        sort: githubSort,
         order: order.toLowerCase(),
         per_page: maxPerPage.toString(),
       });
