@@ -92,12 +92,13 @@ export class ProjectsService {
       const order = sortBy === 'Stars' || sortBy === 'Forks' ? 'desc' : 'desc';
       
       // First search attempt
+      // GitHub API has a maximum of 100 results per page
       let githubResponse = await this.githubService.searchRepositories(
-        filters.search!,
+        filters.search || '',
         filters.language !== 'All' ? filters.language : undefined,
         sortBy,
         order,
-        300, // Increased further to ensure we capture all relevant repos
+        100, // GitHub API maximum is 100 per page
         filters.minStars, // Pass minStars to GitHub API
       );
 
@@ -222,7 +223,7 @@ export class ProjectsService {
                 filters.language !== 'All' ? filters.language : undefined,
                 sortBy,
                 order,
-                300,
+                100, // GitHub API maximum is 100 per page
                 filters.minStars,
               );
               
@@ -454,7 +455,7 @@ export class ProjectsService {
         undefined,
         'updated', // GitHub API sort (will re-sort by created_at below)
         'desc',
-        1000, // Fetch many to get diverse results
+        100, // GitHub API maximum is 100 per page
         undefined,
       );
 

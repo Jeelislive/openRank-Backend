@@ -53,8 +53,11 @@ export class GitHubService {
       // GitHub search works best when we search in name, description, topics, and README
       // If query is empty, search for all public repos (will be filtered by other params)
       
+      // GitHub API has a maximum of 100 results per page
+      const maxPerPage = Math.min(perPage, 100);
+      
       // Clean the query - remove extra spaces and ensure proper formatting
-      const cleanQuery = query.trim().replace(/\s+/g, ' ');
+      const cleanQuery = (query || '').trim().replace(/\s+/g, ' ');
       
       // Build search query - GitHub searches in name, description, topics, and README by default
       // We don't need to add "is:public" explicitly as we're searching public repos
@@ -77,16 +80,20 @@ export class GitHubService {
         q: searchQuery,
         sort: sort === 'Stars' ? 'stars' : sort === 'Forks' ? 'forks' : 'updated',
         order: order.toLowerCase(),
-        per_page: perPage.toString(),
+        per_page: maxPerPage.toString(),
       });
 
       const url = `${this.githubApiUrl}/search/repositories?${params.toString()}`;
+      
+      console.log('GitHub API Request URL:', url);
       
       const response = await fetch(url, {
         headers: this.getHeaders(),
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('GitHub API Error Response:', errorText);
         if (response.status === 403) {
           throw new HttpException('GitHub API rate limit exceeded. Please try again later.', HttpStatus.TOO_MANY_REQUESTS);
         }
