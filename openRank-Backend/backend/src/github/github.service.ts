@@ -28,16 +28,17 @@ interface GitHubSearchResponse {
 export class GitHubService {
   private readonly githubApiUrl = 'https://api.github.com';
   private readonly token: string | null;
+  private lastRequestTime = 0;
+  private readonly minRequestInterval = 150; // 150ms between requests
 
   constructor(private configService: ConfigService) {
-    // Optional: Use GitHub token for higher rate limits
     this.token = this.configService.get<string>('GITHUB_TOKEN') || null;
   }
 
   private getHeaders() {
     const headers: Record<string, string> = {
       'Accept': 'application/vnd.github.v3+json',
-      'User-Agent': 'OpenRank',
+      'User-Agent': 'OpenRank/1.0 (https://open-rank.vercel.app)',
     };
 
     if (this.token) {
@@ -45,6 +46,18 @@ export class GitHubService {
     }
 
     return headers;
+  }
+
+  private async throttleRequest(): Promise<void> {
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    
+    if (timeSinceLastRequest < this.minRequestInterval) {
+      const waitTime = this.minRequestInterval - timeSinceLastRequest;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    
+    this.lastRequestTime = Date.now();
   }
 
   async searchRepositories(query: string, language?: string, sort: string = 'stars', order: string = 'desc', perPage: number = 30, minStars?: number): Promise<GitHubSearchResponse> {
@@ -101,15 +114,13 @@ export class GitHubService {
       });
 
       const url = `${this.githubApiUrl}/search/repositories?${params.toString()}`;
-      
+
+      // Throttle request
+      await this.throttleRequest();
+
       console.log('=== GitHub API Request ===');
       console.log('URL:', url);
       console.log('Query:', searchQuery);
-      console.log('Sort:', githubSort);
-      console.log('Order:', order);
-      console.log('Per Page:', maxPerPage);
-      console.log('Language:', language);
-      console.log('Min Stars:', minStars);
       
       const response = await fetch(url, {
         headers: this.getHeaders(),
@@ -156,7 +167,9 @@ export class GitHubService {
   async getRepositoryDetails(owner: string, repo: string): Promise<GitHubRepo> {
     try {
       const url = `${this.githubApiUrl}/repos/${owner}/${repo}`;
-      
+
+      await this.throttleRequest();
+
       const response = await fetch(url, {
         headers: this.getHeaders(),
       });
@@ -242,7 +255,9 @@ export class GitHubService {
   async getFullRepositoryDetails(owner: string, repo: string): Promise<any> {
     try {
       const url = `${this.githubApiUrl}/repos/${owner}/${repo}`;
-      
+
+      await this.throttleRequest();
+
       const response = await fetch(url, {
         headers: this.getHeaders(),
       });

@@ -5,12 +5,12 @@ import { CategoriesController } from './categories.controller';
 import { LanguagesController } from './languages.controller';
 import { ProjectsService } from './projects.service';
 import { Project } from './project.entity';
-import { GitHubService } from '../github/github.service';
+import { GitHubModule } from '../github/github.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Project])],
+  imports: [TypeOrmModule.forFeature([Project]), GitHubModule],
   controllers: [ProjectsController, CategoriesController, LanguagesController],
-  providers: [ProjectsService, GitHubService],
+  providers: [ProjectsService],
 })
 export class ProjectsModule {}
 
