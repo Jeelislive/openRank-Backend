@@ -59,16 +59,19 @@ export class GitHubService {
       // Clean the query - remove extra spaces and ensure proper formatting
       const cleanQuery = (query || '').trim().replace(/\s+/g, ' ');
       
-      // Build search query - GitHub searches in name, description, topics, and README by default
-      // We don't need to add "is:public" explicitly as we're searching public repos
-      // But we can add it for clarity and to ensure we only get public repos
-      let searchQuery = cleanQuery.length > 0 ? `${cleanQuery} is:public` : 'is:public';
+      // Build search query - GitHub requires at least some search term
+      // If query is empty, use a wildcard search to get all public repos
+      let searchQuery = cleanQuery.length > 0 
+        ? `${cleanQuery} is:public` 
+        : '* is:public'; // Use * to match all when no search term
       
       // For better results, we can also search in topics explicitly
       // But GitHub already searches in topics by default, so we'll keep it simple
       
       if (language && language !== 'All') {
-        searchQuery += ` language:${language}`;
+        // Escape language name if it contains special characters
+        const safeLanguage = language.replace(/[^\w\s-]/g, '');
+        searchQuery += ` language:${safeLanguage}`;
       }
 
       // Add stars filter to GitHub query if specified
@@ -96,7 +99,14 @@ export class GitHubService {
 
       const url = `${this.githubApiUrl}/search/repositories?${params.toString()}`;
       
-      console.log('GitHub API Request URL:', url);
+      console.log('=== GitHub API Request ===');
+      console.log('URL:', url);
+      console.log('Query:', searchQuery);
+      console.log('Sort:', githubSort);
+      console.log('Order:', order);
+      console.log('Per Page:', maxPerPage);
+      console.log('Language:', language);
+      console.log('Min Stars:', minStars);
       
       const response = await fetch(url, {
         headers: this.getHeaders(),
@@ -104,7 +114,11 @@ export class GitHubService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('GitHub API Error Response:', errorText);
+        console.error('=== GitHub API Error ===');
+        console.error('Status:', response.status);
+        console.error('Status Text:', response.statusText);
+        console.error('Error Response:', errorText);
+        console.error('Request URL:', url);
         if (response.status === 403) {
           throw new HttpException('GitHub API rate limit exceeded. Please try again later.', HttpStatus.TOO_MANY_REQUESTS);
         }
