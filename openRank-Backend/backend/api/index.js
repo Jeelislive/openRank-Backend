@@ -72,49 +72,64 @@ try {
 }
 
 // Wrapper to ensure proper async handling and logging
-if (typeof handler === 'function') {
-  module.exports = async (req, res) => {
-    console.log('=== REQUEST START ===');
-    console.log('Request received:', req.method, req.url, req.path);
-    console.log('Handler type:', typeof handler);
-    console.log('__dirname:', __dirname);
-    console.log('process.cwd():', process.cwd());
-    
-    // Add a simple health check
-    if (req.url === '/health' || req.path === '/health') {
-      return res.status(200).json({ 
-        status: 'ok',
-        handler: typeof handler,
-        dirname: __dirname,
-        cwd: process.cwd()
-      });
-    }
-    
-    try {
-      await handler(req, res);
-    } catch (error) {
-      console.error('Handler wrapper error:', error);
-      console.error('Error stack:', error.stack);
-      if (!res.headersSent) {
-        res.status(500).json({ 
-          error: 'Handler execution error',
-          message: error.message,
-          stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-        });
-      }
-    }
-    console.log('=== REQUEST END ===');
-  };
-} else {
-  module.exports = async (req, res) => {
+// This function should ALWAYS be called if Vercel routes to this file
+module.exports = async (req, res) => {
+  console.log('=== FUNCTION INVOKED ===');
+  console.log('Request received:', req.method, req.url, req.path);
+  console.log('Handler loaded:', typeof handler);
+  console.log('__dirname:', __dirname);
+  console.log('process.cwd():', process.cwd());
+  
+  // Simple test endpoint - this should ALWAYS work if function is invoked
+  if (req.url === '/test' || req.path === '/test' || req.url === '/') {
+    return res.status(200).json({ 
+      status: 'Function is working!',
+      message: 'The serverless function is being invoked correctly',
+      handler: typeof handler,
+      handlerLoaded: handler !== undefined,
+      dirname: __dirname,
+      cwd: process.cwd(),
+      url: req.url,
+      path: req.path
+    });
+  }
+  
+  // Health check endpoint
+  if (req.url === '/health' || req.path === '/health') {
+    return res.status(200).json({ 
+      status: 'ok',
+      handler: typeof handler,
+      dirname: __dirname,
+      cwd: process.cwd()
+    });
+  }
+  
+  // If handler is not a function, return error
+  if (typeof handler !== 'function') {
     console.error('Handler is not a function:', typeof handler);
-    res.status(500).json({ 
+    return res.status(500).json({ 
       error: 'Invalid handler',
       message: 'Handler is not a function',
       handlerType: typeof handler,
       dirname: __dirname,
       cwd: process.cwd()
     });
-  };
-}
+  }
+  
+  // Try to call the NestJS handler
+  try {
+    await handler(req, res);
+  } catch (error) {
+    console.error('Handler wrapper error:', error);
+    console.error('Error stack:', error.stack);
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: 'Handler execution error',
+        message: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+    }
+  }
+  console.log('=== REQUEST END ===');
+};
 
