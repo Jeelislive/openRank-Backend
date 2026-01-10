@@ -49,7 +49,12 @@ try {
     throw new Error('Handler not found in main.js');
   }
 
+  if (typeof handler !== 'function') {
+    throw new Error(`Handler is not a function. Type: ${typeof handler}`);
+  }
+
   console.log('Handler loaded successfully from:', usedPath);
+  console.log('Handler type:', typeof handler);
 } catch (error) {
   console.error('Error loading handler:', error);
   console.error('Current working directory:', process.cwd());
@@ -62,5 +67,29 @@ try {
   };
 }
 
-module.exports = handler;
+// Wrapper to ensure proper async handling and logging
+if (typeof handler === 'function') {
+  module.exports = async (req, res) => {
+    console.log('Request received:', req.method, req.url, req.path);
+    try {
+      await handler(req, res);
+    } catch (error) {
+      console.error('Handler wrapper error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ 
+          error: 'Handler execution error',
+          message: error.message 
+        });
+      }
+    }
+  };
+} else {
+  module.exports = async (req, res) => {
+    console.error('Handler is not a function:', typeof handler);
+    res.status(500).json({ 
+      error: 'Invalid handler',
+      message: 'Handler is not a function'
+    });
+  };
+}
 

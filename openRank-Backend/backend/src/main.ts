@@ -28,10 +28,12 @@ async function createApp() {
 async function handler(req: any, res: any) {
   try {
     const app = await createApp();
-    return app(req, res);
+    app(req, res);
   } catch (error) {
     console.error('Handler error:', error);
-    res.status(500).json({ error: 'Internal server error', message: error.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error', message: error.message });
+    }
   }
 }
 
