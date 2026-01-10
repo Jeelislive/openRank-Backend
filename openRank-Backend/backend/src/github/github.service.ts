@@ -60,9 +60,12 @@ export class GitHubService {
       const cleanQuery = (query || '').trim().replace(/\s+/g, ' ');
       
       // Build search query - GitHub requires at least some search term
+      // Check if query already contains 'is:public' to avoid duplication
+      const alreadyHasIsPublic = cleanQuery.toLowerCase().includes('is:public');
+      
       // If query is empty, use a wildcard search to get all public repos
       let searchQuery = cleanQuery.length > 0 
-        ? `${cleanQuery} is:public` 
+        ? (alreadyHasIsPublic ? cleanQuery : `${cleanQuery} is:public`)
         : '* is:public'; // Use * to match all when no search term
       
       // For better results, we can also search in topics explicitly
@@ -119,10 +122,25 @@ export class GitHubService {
         console.error('Status Text:', response.statusText);
         console.error('Error Response:', errorText);
         console.error('Request URL:', url);
-        if (response.status === 403) {
-          throw new HttpException('GitHub API rate limit exceeded. Please try again later.', HttpStatus.TOO_MANY_REQUESTS);
+        
+        // Parse error response to check for spammy flag
+        let errorMessage = response.statusText;
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.message && errorData.message.includes('spammy')) {
+            errorMessage = 'GitHub API temporarily flagged requests as spam. This usually resets within a few hours. Free limit: 60 requests/hour without token.';
+            console.warn('GitHub API spammy flag detected - this is temporary and will reset');
+          } else if (errorData.message) {
+            errorMessage = errorData.message;
+          }
+        } catch (e) {
+          // If JSON parsing fails, use status text
         }
-        throw new HttpException(`GitHub API error: ${response.statusText}`, response.status);
+        
+        if (response.status === 403) {
+          throw new HttpException('GitHub API rate limit exceeded (60 requests/hour without token). Please try again later or add GITHUB_TOKEN for higher limits.', HttpStatus.TOO_MANY_REQUESTS);
+        }
+        throw new HttpException(`GitHub API error: ${errorMessage}`, response.status);
       }
 
       const data: GitHubSearchResponse = await response.json();

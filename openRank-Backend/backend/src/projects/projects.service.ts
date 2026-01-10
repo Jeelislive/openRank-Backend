@@ -21,18 +21,24 @@ export class ProjectsService {
   ) {}
 
   async findAll(filters: ProjectFilters) {
-    // If search query is provided OR filters are applied, search GitHub instead of database
+    // If search query is provided OR filters are applied, try GitHub first, then fallback to database
     // (GitHub search is more comprehensive than local database)
     const hasSearchQuery = filters.search && filters.search.trim().length > 0;
     const hasFilters = filters.category || filters.language || filters.minStars || filters.sortBy;
     
     if (hasSearchQuery || hasFilters) {
-      // Use search query or default to empty string (GitHub will return popular repos)
-      const searchQuery = hasSearchQuery ? filters.search! : '';
-      return this.searchGitHub({ ...filters, search: searchQuery });
+      // Try GitHub API first
+      try {
+        const searchQuery = hasSearchQuery ? filters.search! : '';
+        return await this.searchGitHub({ ...filters, search: searchQuery });
+      } catch (error) {
+        // If GitHub API fails (rate limit, spammy flag, etc.), fallback to database
+        console.warn('GitHub API unavailable, falling back to database:', error.message);
+        // Continue to database query below
+      }
     }
 
-    // Otherwise, query from database (fallback for when no search/filters)
+    // Query from database (fallback when GitHub fails or no search/filters)
     const queryBuilder = this.projectsRepository.createQueryBuilder('project');
 
     // Apply filters
@@ -326,11 +332,8 @@ export class ProjectsService {
       };
     } catch (error) {
       console.error('GitHub search error:', error);
-      // Return empty results on error
-      return {
-        projects: [],
-        total: 0,
-      };
+      // Re-throw error so caller can handle fallback
+      throw error;
     }
   }
 
