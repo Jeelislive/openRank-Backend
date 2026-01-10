@@ -1,6 +1,11 @@
 {
   "version": 2,
   "buildCommand": "npm install && npm run vercel-build",
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "dist/**"
+    }
+  },
   "routes": [
     {
       "src": "/(.*)",
