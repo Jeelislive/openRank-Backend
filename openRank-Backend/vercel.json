@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "backend/api/index.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "installCommand": "cd backend && npm install",
+  "buildCommand": "cd backend && npm run vercel-build",
+  "functions": {
+    "backend/api/index.js": {
+      "includeFiles": "backend/dist/**"
+    }
+  },
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "backend/api/index.js"
+    }
+  ]
+}
+

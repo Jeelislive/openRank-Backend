@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProjectsModule } from './projects/projects.module';
 import { StatsModule } from './stats/stats.module';
@@ -11,27 +11,50 @@ import { StatsModule } from './stats/stats.module';
       isGlobal: true, // Make ConfigModule available globally
       envFilePath: '.env', // Path to .env file
     }),
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      ...(process.env.DATABASE_URL
-        ? {
-            // Use connection string if provided (Supabase)
-            url: process.env.DATABASE_URL,
-            // Supabase requires SSL for all connections
-            ssl: { rejectUnauthorized: false },
-          }
-        : {
-            // Fallback to individual parameters if connection string not provided
-            host: process.env.DB_HOST || 'localhost',
-            port: parseInt(process.env.DB_PORT || '5432'),
-            username: process.env.DB_USERNAME || 'postgres',
-            password: process.env.DB_PASSWORD || '',
-            database: process.env.DB_NAME || 'openrank',
-            ssl: false,
-          }),
-      entities: [__dirname + '/**/*.entity{.ts,.js}'],
-      synchronize: process.env.NODE_ENV !== 'production', // Only in development
-      autoLoadEntities: true,
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => {
+        const databaseUrl = configService.get<string>('DATABASE_URL') || 
+                           configService.get<string>('POSTGRES_URL');
+        
+        return {
+          type: 'postgres',
+          ...(databaseUrl
+            ? {
+                // Use connection string if provided (Supabase)
+                url: databaseUrl,
+                // Supabase requires SSL for all connections
+                ssl: { rejectUnauthorized: false },
+              }
+            : {
+                // Fallback to individual parameters if connection string not provided
+                host: configService.get<string>('POSTGRES_HOST') || 
+                      configService.get<string>('DB_HOST') || 
+                      'localhost',
+                port: parseInt(
+                  configService.get<string>('POSTGRES_PORT') || 
+                  configService.get<string>('DB_PORT') || 
+                  '5432'
+                ),
+                username: configService.get<string>('POSTGRES_USER') || 
+                         configService.get<string>('DB_USERNAME') || 
+                         'postgres',
+                password: configService.get<string>('POSTGRES_PASSWORD') || 
+                         configService.get<string>('DB_PASSWORD') || 
+                         '',
+                database: configService.get<string>('POSTGRES_DATABASE') || 
+                         configService.get<string>('DB_NAME') || 
+                         'openrank',
+                ssl: configService.get<string>('POSTGRES_HOST') 
+                  ? { rejectUnauthorized: false } 
+                  : false,
+              }),
+          entities: [__dirname + '/**/*.entity{.ts,.js}'],
+          synchronize: configService.get<string>('NODE_ENV') !== 'production', // Only in development
+          autoLoadEntities: true,
+        };
+      },
+      inject: [ConfigService],
     }),
     ProjectsModule,
     StatsModule,
