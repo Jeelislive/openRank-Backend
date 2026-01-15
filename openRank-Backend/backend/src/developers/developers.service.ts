@@ -13,25 +13,36 @@ export class DevelopersService {
   ) {}
 
   /**
-   * Calculate Developer Impact Score (DIS)
-   * DIS = (PR_Impact * 0.30) + (Issue_Impact * 0.20) + (Dependency_Influence * 0.15) +
-   *       (Project_Longevity * 0.10) + (Community_Impact * 0.10) + (Docs_Impact * 0.05) +
-   *       (Consistency * 0.05) + (Quality_Multiplier)
+   * Calculate Developer Impact Score (DIS) - Simplified version
+   * Based only on: PRs, Commits, Issues, Followers, Lines, Stars, Repos, Years
+   * Score is normalized to 0-100 scale
    */
   private calculateImpactScore(developer: Partial<Developer>): number {
-    const prImpact = (developer.prImpact || 0) * 0.30;
-    const issueImpact = (developer.issueImpact || 0) * 0.20;
-    const dependencyInfluence = (developer.dependencyInfluence || 0) * 0.15;
-    const projectLongevity = (developer.projectLongevity || 0) * 0.10;
-    const communityImpact = (developer.communityImpact || 0) * 0.10;
-    const docsImpact = (developer.docsImpact || 0) * 0.05;
-    const consistency = (developer.consistency || 0) * 0.05;
-    const qualityMultiplier = developer.qualityMultiplier || 1.0;
+    const totalPRs = developer.totalPRs || 0;
+    const totalCommits = developer.totalCommits || 0;
+    const totalIssues = developer.totalIssues || 0;
+    const followers = developer.followers || 0;
+    const totalLines = (developer.totalLinesAdded || 0) + (developer.totalLinesDeleted || 0);
+    const totalStars = developer.totalStarsReceived || 0;
+    const publicRepos = developer.publicRepos || 0;
+    const yearsActive = developer.yearsActive || 0;
 
-    const baseScore = prImpact + issueImpact + dependencyInfluence + 
-                     projectLongevity + communityImpact + docsImpact + consistency;
+    // Normalize each metric to 0-100 scale using logarithmic scaling
+    // Weights: PRs (20%), Commits (20%), Issues (10%), Followers (15%), Lines (10%), Stars (15%), Repos (5%), Years (5%)
+    const prScore = Math.min(Math.log10(totalPRs + 1) * 10, 20);
+    const commitScore = Math.min(Math.log10(totalCommits + 1) * 10, 20);
+    const issueScore = Math.min(Math.log10(totalIssues + 1) * 10, 10);
+    const followerScore = Math.min(Math.log10(followers + 1) * 10, 15);
+    const linesScore = Math.min(Math.log10(totalLines / 1000 + 1) * 10, 10); // Lines in thousands
+    const starsScore = Math.min(Math.log10(totalStars + 1) * 10, 15);
+    const reposScore = Math.min(Math.log10(publicRepos + 1) * 10, 5);
+    const yearsScore = Math.min(yearsActive * 2, 5); // Max 5 points for 2.5+ years
+
+    const totalScore = prScore + commitScore + issueScore + followerScore + 
+                      linesScore + starsScore + reposScore + yearsScore;
     
-    return baseScore * qualityMultiplier;
+    // Normalize to 0-100 scale
+    return Math.min(100, Math.max(0, totalScore));
   }
 
   /**
@@ -556,6 +567,7 @@ export class DevelopersService {
       const dbCompanies = result.map(r => r.company).filter(Boolean);
       
       const knownCompanies = [
+        // Tech Giants
         'Google', 'Microsoft', 'Amazon', 'Apple', 'Meta', 'Facebook',
         'Netflix', 'Uber', 'Airbnb', 'Twitter', 'LinkedIn', 'Oracle',
         'IBM', 'Intel', 'Adobe', 'Salesforce', 'VMware', 'Cisco',
@@ -564,7 +576,79 @@ export class DevelopersService {
         'OpenAI', 'Anthropic', 'Stability AI', 'Cohere', 'Hugging Face',
         'Vercel', 'Supabase', 'Railway', 'Render', 'PlanetScale',
         'Linear', 'Notion', 'Figma', 'Canva', 'Discord', 'Slack',
-        'Replit', 'CodeSandbox', 'TurboRepo', 'Prisma'
+        'Replit', 'CodeSandbox', 'TurboRepo', 'Prisma',
+        
+        // Financial Services & Banks
+        'JPMorgan Chase', 'JPMorgan', 'JPMorgan Stanley', 'Bank of America', 'Goldman Sachs',
+        'Morgan Stanley', 'Citigroup', 'Wells Fargo', 'Barclays', 'HSBC',
+        'Deutsche Bank', 'Credit Suisse', 'UBS', 'BNP Paribas', 'Société Générale',
+        'American Express', 'Visa', 'Mastercard', 'Fidelity', 'BlackRock',
+        'Charles Schwab', 'TD Bank', 'Bank of New York Mellon', 'State Street',
+        
+        // Consulting & Professional Services
+        'McKinsey & Company', 'McKinsey', 'Boston Consulting Group', 'BCG', 'Bain & Company',
+        'Deloitte', 'PwC', 'PricewaterhouseCoopers', 'EY', 'Ernst & Young',
+        'KPMG', 'Accenture', 'Capgemini', 'Cognizant',
+        
+        // Ahmedabad companies
+        'Asite', 'Upsquare', 'Radixweb', 'Simform', 'Tatvasoft', 'Concetto Labs',
+        'Techvify', 'WeblineIndia', 'Agile Infoways', 'OpenXcell',
+        
+        // Bangalore companies
+        'Infosys', 'Wipro', 'TCS', 'Tata Consultancy Services', 'Mindtree',
+        'Mphasis', 'HCL Technologies', 'Tech Mahindra',
+        'Flipkart', 'Ola', 'Swiggy', 'Razorpay', 'PhonePe', 'Zomato',
+        'Myntra', 'BigBasket', 'Byju\'s', 'Unacademy', 'Practo',
+        
+        // Pune companies
+        'Persistent Systems', 'KPIT', 'Zensar', 'Cybage', 'Amdocs', 'Syntel',
+        
+        // Other International Tech Companies
+        'Samsung', 'Sony', 'Panasonic', 'LG', 'Huawei', 'Xiaomi', 'Alibaba',
+        'Tencent', 'Baidu', 'ByteDance', 'TikTok', 'SAP', 'Siemens', 'Bosch',
+        'BMW', 'Mercedes-Benz', 'Volkswagen', 'Audi', 'Toyota', 'Honda',
+        'Nintendo', 'Electronic Arts', 'Activision Blizzard', 'Ubisoft',
+        
+        // Media & Entertainment
+        'Disney', 'Warner Bros', 'Universal', 'Paramount', 'Sony Pictures',
+        'BBC', 'CNN', 'Reuters', 'Bloomberg', 'The New York Times',
+        
+        // E-commerce & Retail
+        'eBay', 'Alibaba', 'JD.com', 'Rakuten', 'MercadoLibre', 'Walmart',
+        'Target', 'Costco', 'Home Depot', 'Lowe\'s',
+        
+        // Healthcare & Pharma
+        'Pfizer', 'Johnson & Johnson', 'Merck', 'Novartis', 'Roche',
+        'GlaxoSmithKline', 'GSK', 'AstraZeneca', 'Bayer', 'Sanofi',
+        
+        // Energy & Utilities
+        'ExxonMobil', 'Shell', 'BP', 'Chevron', 'TotalEnergies',
+        'Schlumberger', 'Halliburton', 'Baker Hughes',
+        
+        // Aerospace & Defense
+        'Boeing', 'Lockheed Martin', 'Northrop Grumman', 'Raytheon',
+        'Airbus', 'General Dynamics', 'BAE Systems',
+        
+        // Automotive
+        'Ford', 'General Motors', 'GM', 'Chrysler', 'Fiat', 'Volvo',
+        'Hyundai', 'Kia', 'Mazda', 'Subaru', 'Nissan', 'Mitsubishi',
+        
+        // Telecommunications
+        'AT&T', 'Verizon', 'T-Mobile', 'Sprint', 'Vodafone', 'Orange',
+        'Telefónica', 'Deutsche Telekom', 'BT Group', 'NTT',
+        
+        // Food & Beverage
+        'Coca-Cola', 'PepsiCo', 'Nestlé', 'Unilever', 'Procter & Gamble',
+        'P&G', 'Kraft Heinz', 'Mondelez', 'Danone',
+        
+        // Airlines
+        'American Airlines', 'Delta', 'United Airlines', 'Southwest',
+        'Lufthansa', 'Air France', 'British Airways', 'Emirates',
+        
+        // Other Major Companies
+        'GE', 'General Electric', '3M', 'Caterpillar', 'Honeywell',
+        'United Technologies', 'Raytheon Technologies', 'FedEx', 'UPS',
+        'DHL', 'Maersk', 'Nike', 'Adidas', 'Puma'
       ];
       
       // Merge and deduplicate (case-insensitive)
@@ -986,6 +1070,98 @@ export class DevelopersService {
     return processed;
   }
 
+  private getCompanyVariations(company: string): string[] {
+    const variations = new Set<string>([company]);
+    
+    // Common variations
+    const lower = company.toLowerCase();
+    const upper = company.toUpperCase();
+    const title = company.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    
+    variations.add(lower);
+    variations.add(upper);
+    variations.add(title);
+    
+    // Remove common suffixes/prefixes and try variations
+    const withoutInc = company.replace(/\s*(Inc|Inc\.|Incorporated|LLC|Ltd|Ltd\.|Limited|Corp|Corp\.|Corporation)\s*$/i, '').trim();
+    if (withoutInc !== company) {
+      variations.add(withoutInc);
+      variations.add(withoutInc.toLowerCase());
+    }
+    
+    // Handle specific company name variations
+    const companyVariations: { [key: string]: string[] } = {
+      'JPMorgan Chase': ['JPMorgan', 'JP Morgan', 'JPMorgan Chase', 'JPM', 'jpmorgan', 'jpmorganchase'],
+      'JPMorgan': ['JPMorgan Chase', 'JP Morgan', 'JPM', 'jpmorgan'],
+      'JPMorgan Stanley': ['JPMorgan', 'JP Morgan Stanley', 'JPM Stanley', 'jpmorganstanley'],
+      'Bank of America': ['BofA', 'BOA', 'Bank of America', 'bankofamerica'],
+      'Goldman Sachs': ['Goldman', 'GS', 'goldmansachs'],
+      'Morgan Stanley': ['MS', 'morganstanley'],
+      'McKinsey & Company': ['McKinsey', 'McKinsey & Co', 'mckinsey'],
+      'Boston Consulting Group': ['BCG', 'bcg'],
+      'Bain & Company': ['Bain', 'Bain & Co', 'bain'],
+      'PricewaterhouseCoopers': ['PwC', 'pwc'],
+      'Ernst & Young': ['EY', 'E&Y'],
+      'General Electric': ['GE', 'ge'],
+      'International Business Machines': ['IBM', 'ibm'],
+      'American Express': ['Amex', 'AMEX', 'amex'],
+    };
+    
+    if (companyVariations[company]) {
+      companyVariations[company].forEach(v => variations.add(v));
+    }
+    
+    // Try removing spaces and special characters
+    const noSpaces = company.replace(/\s+/g, '');
+    const noSpacesLower = noSpaces.toLowerCase();
+    variations.add(noSpaces);
+    variations.add(noSpacesLower);
+    
+    return Array.from(variations);
+  }
+
+  private getOrganizationNameVariations(company: string): string[] {
+    const orgNames = new Set<string>();
+    
+    // Direct lowercase
+    orgNames.add(company.toLowerCase());
+    
+    // Remove spaces
+    orgNames.add(company.toLowerCase().replace(/\s+/g, ''));
+    orgNames.add(company.toLowerCase().replace(/\s+/g, '-'));
+    
+    // Remove common words
+    const withoutCommon = company.replace(/\b(Inc|Inc\.|Incorporated|LLC|Ltd|Ltd\.|Limited|Corp|Corp\.|Corporation|Company|Co|&|and)\b/gi, '').trim();
+    if (withoutCommon !== company) {
+      orgNames.add(withoutCommon.toLowerCase().replace(/\s+/g, ''));
+      orgNames.add(withoutCommon.toLowerCase().replace(/\s+/g, '-'));
+    }
+    
+    // Specific organization mappings
+    const orgMappings: { [key: string]: string[] } = {
+      'JPMorgan Chase': ['jpmorgan', 'jpmorganchase', 'jpmorgan-chase'],
+      'JPMorgan': ['jpmorgan'],
+      'JPMorgan Stanley': ['jpmorganstanley', 'jpmorgan-stanley'],
+      'Bank of America': ['bankofamerica', 'bofa'],
+      'Goldman Sachs': ['goldmansachs', 'gs'],
+      'Morgan Stanley': ['morganstanley', 'ms'],
+      'McKinsey & Company': ['mckinsey'],
+      'Boston Consulting Group': ['bcg'],
+      'Bain & Company': ['bain'],
+      'PricewaterhouseCoopers': ['pwc'],
+      'Ernst & Young': ['ey'],
+      'General Electric': ['ge'],
+      'International Business Machines': ['ibm'],
+      'American Express': ['amex'],
+    };
+    
+    if (orgMappings[company]) {
+      orgMappings[company].forEach(org => orgNames.add(org));
+    }
+    
+    return Array.from(orgNames);
+  }
+
   public async discoverDevelopersByCompany(company: string, limit: number = 50, minRequired: number = 15): Promise<number> {
     let processed = 0;
     const discoveredUsernames = new Set<string>();
@@ -993,45 +1169,55 @@ export class DevelopersService {
     try {
       console.log(`Discovering developers from company: ${company} (target: ${minRequired} minimum)`);
       
-      // Strategy 1: Search users by company field
-      try {
-        const companyUsers = await this.githubService.searchUsersByCompany(company, 50);
-        if (companyUsers.items) {
-          for (const user of companyUsers.items) {
-            if (user.login && !user.login.includes('[bot]')) {
-              discoveredUsernames.add(user.login);
+      // Strategy 1: Search users by company field with variations
+      const companyVariations = this.getCompanyVariations(company);
+      console.log(`Trying ${companyVariations.length} company name variations: ${companyVariations.slice(0, 5).join(', ')}...`);
+      
+      for (const variation of companyVariations.slice(0, 10)) { // Limit to 10 variations to avoid rate limits
+        try {
+          const companyUsers = await this.githubService.searchUsersByCompany(variation, 30);
+          if (companyUsers.items && companyUsers.items.length > 0) {
+            console.log(`Found ${companyUsers.items.length} users with company: ${variation}`);
+            for (const user of companyUsers.items) {
+              if (user.login && !user.login.includes('[bot]')) {
+                discoveredUsernames.add(user.login);
+              }
             }
           }
+          await new Promise(resolve => setTimeout(resolve, 300));
+        } catch (error: any) {
+          if (error.status === 429 || error.status === 403) {
+            console.warn(`Rate limit reached while searching company ${variation}`);
+            break;
+          }
+          // Continue with next variation
         }
-        await new Promise(resolve => setTimeout(resolve, 500));
-      } catch (error: any) {
-        if (error.status === 429 || error.status === 403) {
-          console.warn(`Rate limit reached while searching company ${company}`);
-          return 0;
-        }
-        console.error(`Error searching company ${company}:`, error.message);
       }
 
-      // Strategy 2: Get organization members (if company name matches an org)
-      const companyLower = company.toLowerCase();
-      const orgName = companyLower;
+      // Strategy 2: Get organization members (try multiple org name variations)
+      const orgVariations = this.getOrganizationNameVariations(company);
+      console.log(`Trying ${orgVariations.length} organization name variations: ${orgVariations.slice(0, 5).join(', ')}...`);
       
-      try {
-        const orgMembers = await this.githubService.getOrganizationMembers(orgName, 100, 1);
-        if (orgMembers && orgMembers.length > 0) {
-          for (const member of orgMembers) {
-            if (member.login && !member.login.includes('[bot]')) {
-              discoveredUsernames.add(member.login);
+      for (const orgName of orgVariations.slice(0, 5)) { // Limit to 5 org variations
+        try {
+          const orgMembers = await this.githubService.getOrganizationMembers(orgName, 100, 1);
+          if (orgMembers && orgMembers.length > 0) {
+            console.log(`Found ${orgMembers.length} members in organization ${orgName}`);
+            for (const member of orgMembers) {
+              if (member.login && !member.login.includes('[bot]')) {
+                discoveredUsernames.add(member.login);
+              }
             }
           }
-          console.log(`Found ${orgMembers.length} members in organization ${orgName}`);
-        }
-        await new Promise(resolve => setTimeout(resolve, 500));
-      } catch (error: any) {
-        if (error.status !== 404) {
-          console.log(`Could not fetch members from org ${orgName}: ${error.message}`);
+          await new Promise(resolve => setTimeout(resolve, 300));
+        } catch (error: any) {
+          if (error.status !== 404) {
+            // Continue with next variation
+          }
         }
       }
+      
+      console.log(`Total unique developers discovered: ${discoveredUsernames.size}`);
 
       // Process discovered developers - prioritize getting at least minRequired
       const usernamesArray = Array.from(discoveredUsernames).slice(0, limit);
