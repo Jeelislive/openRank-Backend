@@ -33,6 +33,11 @@ export class GitHubService {
 
   constructor(private configService: ConfigService) {
     this.token = this.configService.get<string>('GITHUB_TOKEN') || null;
+    if (!this.token) {
+      console.warn('⚠️  GITHUB_TOKEN not configured. API rate limit: 60 requests/hour (unauthenticated). Add GITHUB_TOKEN for 5000 requests/hour.');
+    } else {
+      console.log('✓ GitHub token configured. Rate limit: 5000 requests/hour.');
+    }
   }
 
   private getHeaders() {
@@ -272,6 +277,336 @@ export class GitHubService {
         throw error;
       }
       throw new HttpException(`Failed to fetch repository: ${error.message}`, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async getUser(username: string): Promise<any> {
+    try {
+      const url = `${this.githubApiUrl}/users/${username}`;
+
+      await this.throttleRequest();
+
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new HttpException(`User ${username} not found`, HttpStatus.NOT_FOUND);
+        }
+        throw new HttpException(`GitHub API error: ${response.statusText}`, response.status);
+      }
+
+      return await response.json();
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(`Failed to fetch user: ${error.message}`, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async getUserOrganizations(username: string): Promise<any[]> {
+    try {
+      const url = `${this.githubApiUrl}/users/${username}/orgs`;
+
+      await this.throttleRequest();
+
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          return [];
+        }
+        throw new HttpException(`GitHub API error: ${response.statusText}`, response.status);
+      }
+
+      return await response.json();
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      return [];
+    }
+  }
+
+  async getOrganizationMembers(org: string, perPage: number = 100, page: number = 1): Promise<any[]> {
+    try {
+      const url = `${this.githubApiUrl}/orgs/${org}/members?per_page=${perPage}&page=${page}`;
+
+      await this.throttleRequest();
+
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          return [];
+        }
+        throw new HttpException(`GitHub API error: ${response.statusText}`, response.status);
+      }
+
+      return await response.json();
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      return [];
+    }
+  }
+
+  async searchUsersByCompany(company: string, perPage: number = 30): Promise<any> {
+    try {
+      const url = `${this.githubApiUrl}/search/users?q=${encodeURIComponent(`company:"${company}"`)}&per_page=${perPage}`;
+
+      await this.throttleRequest();
+
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('=== GitHub API Error (searchUsersByCompany) ===');
+        console.error('Status:', response.status);
+        console.error('Company:', company);
+        
+        let errorMessage = response.statusText;
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.message) {
+            errorMessage = errorData.message;
+          }
+        } catch (e) {
+          // If JSON parsing fails, use status text
+        }
+        
+        if (response.status === 403) {
+          const rateLimitMessage = this.token 
+            ? 'GitHub API rate limit exceeded. Please try again later.'
+            : 'GitHub API rate limit exceeded (60 requests/hour without token). Please add GITHUB_TOKEN for higher limits (5000 requests/hour).';
+          throw new HttpException(rateLimitMessage, HttpStatus.TOO_MANY_REQUESTS);
+        }
+        
+        throw new HttpException(`GitHub API error: ${errorMessage}`, response.status);
+      }
+
+      return await response.json();
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(`Failed to search users by company: ${error.message}`, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async getUserRepositories(username: string, perPage: number = 100, page: number = 1): Promise<any[]> {
+    try {
+      const url = `${this.githubApiUrl}/users/${username}/repos?per_page=${perPage}&page=${page}&sort=updated&direction=desc`;
+
+      await this.throttleRequest();
+
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        return [];
+      }
+
+      return await response.json();
+    } catch (error) {
+      return [];
+    }
+  }
+
+  async getUserEvents(username: string, perPage: number = 100): Promise<any[]> {
+    try {
+      const url = `${this.githubApiUrl}/users/${username}/events/public?per_page=${perPage}`;
+
+      await this.throttleRequest();
+
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        return [];
+      }
+
+      return await response.json();
+    } catch (error) {
+      return [];
+    }
+  }
+
+  async getRepositoryContributions(owner: string, repo: string, username: string): Promise<any> {
+    try {
+      // Get contributor stats
+      const url = `${this.githubApiUrl}/repos/${owner}/${repo}/stats/contributors`;
+
+      await this.throttleRequest();
+
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const contributors = await response.json();
+      if (!Array.isArray(contributors)) {
+        return null;
+      }
+
+      // Find the specific user's contributions
+      const userContributions = contributors.find((contrib: any) => {
+        return contrib.author && contrib.author.login === username;
+      });
+
+      return userContributions || null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  async searchUsers(query: string, perPage: number = 30): Promise<any> {
+    try {
+      const url = `${this.githubApiUrl}/search/users?q=${encodeURIComponent(query)}&per_page=${perPage}`;
+
+      await this.throttleRequest();
+
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('=== GitHub API Error (searchUsers) ===');
+        console.error('Status:', response.status);
+        console.error('Status Text:', response.statusText);
+        console.error('Query:', query);
+        
+        let errorMessage = response.statusText;
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.message) {
+            errorMessage = errorData.message;
+          }
+        } catch (e) {
+          // If JSON parsing fails, use status text
+        }
+        
+        if (response.status === 403) {
+          const rateLimitMessage = this.token 
+            ? 'GitHub API rate limit exceeded. Please try again later.'
+            : 'GitHub API rate limit exceeded (60 requests/hour without token). Please add GITHUB_TOKEN for higher limits (5000 requests/hour).';
+          throw new HttpException(rateLimitMessage, HttpStatus.TOO_MANY_REQUESTS);
+        }
+        
+        throw new HttpException(`GitHub API error: ${errorMessage}`, response.status);
+      }
+
+      return await response.json();
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(`Failed to search users: ${error.message}`, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async searchPullRequests(query: string, perPage: number = 100): Promise<any> {
+    try {
+      const url = `${this.githubApiUrl}/search/issues?q=${encodeURIComponent(query)}&per_page=${perPage}`;
+
+      await this.throttleRequest();
+
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        return { total_count: 0, items: [] };
+      }
+
+      return await response.json();
+    } catch (error) {
+      return { total_count: 0, items: [] };
+    }
+  }
+
+  async getUserPullRequests(username: string, state: string = 'merged', perPage: number = 100): Promise<any[]> {
+    try {
+      // Search for merged PRs by user in last 90 days
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      const dateStr = ninetyDaysAgo.toISOString().split('T')[0];
+      
+      const query = `author:${username} type:pr is:${state} merged:>=${dateStr}`;
+      const result = await this.searchPullRequests(query, perPage);
+      
+      return result.items || [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  async getUserIssuesClosed(username: string, perPage: number = 100): Promise<any[]> {
+    try {
+      // Search for closed issues (not created by user) in last 90 days
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      const dateStr = ninetyDaysAgo.toISOString().split('T')[0];
+      
+      const query = `-author:${username} type:issue is:closed commenter:${username} closed:>=${dateStr}`;
+      const result = await this.searchPullRequests(query, perPage);
+      
+      return result.items || [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  async getUserPRReviews(username: string, perPage: number = 100): Promise<any[]> {
+    try {
+      // Search for PR reviews in last 90 days
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      const dateStr = ninetyDaysAgo.toISOString().split('T')[0];
+      
+      const query = `reviewed-by:${username} type:pr reviewed:>=${dateStr}`;
+      const result = await this.searchPullRequests(query, perPage);
+      
+      return result.items || [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  async isMaintainerOfActiveRepo(username: string): Promise<boolean> {
+    try {
+      // Get user's repos and check if any are active (updated in last 90 days)
+      const repos = await this.getUserRepositories(username, 10, 1);
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      
+      for (const repo of repos) {
+        if (!repo.fork && repo.owner.login === username) {
+          const updatedAt = new Date(repo.updated_at);
+          if (updatedAt >= ninetyDaysAgo && (repo.stargazers_count > 0 || repo.forks_count > 0)) {
+            return true;
+          }
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      return false;
     }
   }
 }
