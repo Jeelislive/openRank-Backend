@@ -1,9 +1,13 @@
 import { Controller, Get, Query, Param, Post, Body, HttpException, HttpStatus } from '@nestjs/common';
 import { DevelopersService } from './developers.service';
+import { DevelopersSchedulerService } from './developers-scheduler.service';
 
 @Controller('api/developers')
 export class DevelopersController {
-  constructor(private readonly developersService: DevelopersService) {}
+  constructor(
+    private readonly developersService: DevelopersService,
+    private readonly schedulerService: DevelopersSchedulerService,
+  ) {}
 
   @Get('rankings')
   async getRankings(
@@ -310,6 +314,23 @@ export class DevelopersController {
       }
       throw new HttpException(
         `Failed to calculate developer: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  @Post('trigger-discovery')
+  async triggerDiscovery() {
+    try {
+      // Manually trigger the discovery job
+      await this.schedulerService.handleDailyDiscovery();
+      return {
+        message: 'Discovery job triggered successfully. Check server logs for details.',
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      throw new HttpException(
+        `Failed to trigger discovery: ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }

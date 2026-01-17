@@ -45,150 +45,58 @@ export class DevelopersService {
     return Math.min(100, Math.max(0, totalScore));
   }
 
-  /**
-   * Calculate PR Impact based on PRs, merges, and PR quality
-   */
-  private calculatePRImpact(totalPRs: number, mergedPRs: number, prStars: number): number {
-    if (totalPRs === 0) return 0;
-    
-    const mergeRate = mergedPRs / totalPRs;
-    const prQuality = Math.log10(prStars + 1) * 10; // Logarithmic scale for stars
-    const prVolume = Math.log10(totalPRs + 1) * 20;
-    
-    return (mergeRate * 40) + (prQuality * 0.3) + (prVolume * 0.3);
-  }
+  // Constants for location extraction
+  private static readonly SF_INDICATORS = [
+    'san francisco', 'sf', 'san fran', 'bay area',
+    'san francisco, ca', 'san francisco, california',
+    'sf bay area', 'bay area, ca'
+  ];
 
-  /**
-   * Calculate Issue Impact based on issues created, closed, and engagement
-   */
-  private calculateIssueImpact(totalIssues: number, closedIssues: number, issueEngagement: number): number {
-    if (totalIssues === 0) return 0;
-    
-    const closeRate = closedIssues / totalIssues;
-    const engagementScore = Math.log10(issueEngagement + 1) * 10;
-    const issueVolume = Math.log10(totalIssues + 1) * 15;
-    
-    return (closeRate * 30) + (engagementScore * 0.4) + (issueVolume * 0.3);
-  }
+  private static readonly INDIA_INDICATORS = ['india', 'indian', 'in', 'bharat'];
 
-  /**
-   * Calculate Dependency Influence based on how many projects depend on their work
-   */
-  private calculateDependencyInfluence(dependents: number, packageDownloads: number): number {
-    const dependentScore = Math.log10(dependents + 1) * 25;
-    const downloadScore = Math.log10(packageDownloads + 1) * 0.1;
-    
-    return dependentScore + downloadScore;
-  }
+  private static readonly CITY_MAPPINGS: Record<string, string> = {
+    'ahmedabad': 'Ahmedabad',
+    'amdavad': 'Ahmedabad',
+    'pune': 'Pune',
+    'bangalore': 'Bangalore',
+    'bengaluru': 'Bangalore',
+    'bangaluru': 'Bangalore',
+  };
 
-  /**
-   * Calculate Project Longevity based on project age and maintenance
-   */
-  private calculateProjectLongevity(yearsActive: number, activeProjects: number, lastActiveAt: Date): number {
-    const yearsScore = Math.min(yearsActive * 10, 50); // Max 50 points for 5+ years
-    const projectsScore = Math.min(activeProjects * 2, 30); // Max 30 points
-    const recencyScore = this.getRecencyScore(lastActiveAt);
-    
-    return yearsScore + projectsScore + recencyScore;
-  }
+  // Recency score lookup table (days -> score)
+  private static readonly RECENCY_SCORES: Array<{ maxDays: number; score: number }> = [
+    { maxDays: 7, score: 20 },
+    { maxDays: 30, score: 15 },
+    { maxDays: 90, score: 10 },
+    { maxDays: 180, score: 5 },
+  ];
 
-  /**
-   * Calculate Community Impact based on followers, contributions, and engagement
-   */
-  private calculateCommunityImpact(followers: number, totalContributions: number, starsReceived: number): number {
-    const followerScore = Math.log10(followers + 1) * 15;
-    const contributionScore = Math.log10(totalContributions + 1) * 10;
-    const starScore = Math.log10(starsReceived + 1) * 5;
-    
-    return followerScore + contributionScore + starScore;
-  }
-
-  /**
-   * Calculate Docs Impact based on documentation contributions
-   */
-  private calculateDocsImpact(docPRs: number, docCommits: number): number {
-    const docPRScore = docPRs * 5;
-    const docCommitScore = Math.log10(docCommits + 1) * 10;
-    
-    return docPRScore + docCommitScore;
-  }
-
-  /**
-   * Calculate Consistency based on regular contributions
-   */
-  private calculateConsistency(totalCommits: number, yearsActive: number, avgCommitsPerMonth: number): number {
-    if (yearsActive === 0) return 0;
-    
-    const commitConsistency = Math.min(avgCommitsPerMonth / 10, 1) * 30; // Max 30 points
-    const activityConsistency = Math.min(totalCommits / (yearsActive * 100), 1) * 20; // Max 20 points
-    
-    return commitConsistency + activityConsistency;
-  }
-
-  /**
-   * Calculate Quality Multiplier based on code quality metrics
-   */
-  private calculateQualityMultiplier(
-    codeReviewRatio: number,
-    testCoverage: number,
-    codeComplexity: number
-  ): number {
-    let multiplier = 1.0;
-    
-    // Code review participation increases quality
-    if (codeReviewRatio > 0.5) multiplier += 0.2;
-    else if (codeReviewRatio > 0.3) multiplier += 0.1;
-    
-    // Test coverage increases quality
-    if (testCoverage > 0.7) multiplier += 0.15;
-    else if (testCoverage > 0.5) multiplier += 0.1;
-    
-    // Lower complexity is better
-    if (codeComplexity < 10) multiplier += 0.1;
-    else if (codeComplexity > 50) multiplier -= 0.1;
-    
-    return Math.max(0.5, Math.min(2.0, multiplier)); // Clamp between 0.5 and 2.0
-  }
-
-  /**
-   * Get recency score based on last activity
-   */
   private getRecencyScore(lastActiveAt: Date | null): number {
     if (!lastActiveAt) return 0;
     
     const daysSinceActive = (Date.now() - lastActiveAt.getTime()) / (1000 * 60 * 60 * 24);
     
-    if (daysSinceActive < 7) return 20; // Very recent
-    if (daysSinceActive < 30) return 15; // Recent
-    if (daysSinceActive < 90) return 10; // Somewhat recent
-    if (daysSinceActive < 180) return 5; // Not very recent
-    return 0; // Inactive
+    const scoreEntry = DevelopersService.RECENCY_SCORES.find(entry => daysSinceActive < entry.maxDays);
+    return scoreEntry?.score ?? 0;
   }
 
   async isDeveloperEligible(username: string): Promise<boolean> {
     try {
-      const mergedPRs = await this.githubService.getUserPullRequests(username, 'merged', 100);
-      if (mergedPRs.length >= 10) {
-        console.log(`✓ ${username}: Eligible (${mergedPRs.length} merged PRs)`);
-        return true;
-      }
+      const eligibilityChecks = [
+        { check: () => this.githubService.getUserPullRequests(username, 'merged', 100), threshold: 10, message: 'merged PRs' },
+        { check: () => this.githubService.getUserIssuesClosed(username, 100), threshold: 2, message: 'issues closed' },
+        { check: () => this.githubService.getUserPRReviews(username, 100), threshold: 1, message: 'PR reviews' },
+        { check: () => this.githubService.isMaintainerOfActiveRepo(username), threshold: 1, message: 'maintainer of active repo', isBoolean: true },
+      ];
 
-      const closedIssues = await this.githubService.getUserIssuesClosed(username, 100);
-      if (closedIssues.length >= 2) {
-        console.log(`✓ ${username}: Eligible (${closedIssues.length} issues closed)`);
-        return true;
-      }
-
-      const prReviews = await this.githubService.getUserPRReviews(username, 100);
-      if (prReviews.length >= 1) {
-        console.log(`✓ ${username}: Eligible (${prReviews.length} PR reviews)`);
-        return true;
-      }
-
-      const isMaintainer = await this.githubService.isMaintainerOfActiveRepo(username);
-      if (isMaintainer) {
-        console.log(`✓ ${username}: Eligible (maintainer of active repo)`);
-        return true;
+      for (const { check, threshold, message, isBoolean } of eligibilityChecks) {
+        const result = await check();
+        const count = isBoolean ? (result ? 1 : 0) : (result as any[]).length;
+        
+        if (count >= threshold) {
+          console.log(`✓ ${username}: Eligible (${count} ${message})`);
+          return true;
+        }
       }
 
       console.log(`✗ ${username}: Not eligible (insufficient activity)`);
@@ -204,127 +112,152 @@ export class DevelopersService {
     
     const locationLower = location.toLowerCase().trim();
     
-    const sfIndicators = [
-      'san francisco', 'sf', 'san fran', 'bay area', 
-      'san francisco, ca', 'san francisco, california',
-      'sf bay area', 'bay area, ca'
-    ];
-    if (sfIndicators.some(indicator => locationLower.includes(indicator))) {
+    // Check for San Francisco first
+    if (DevelopersService.SF_INDICATORS.some(indicator => locationLower.includes(indicator))) {
       return { country: 'United States', city: 'San Francisco' };
     }
     
-    const indiaIndicators = ['india', 'indian', 'in', 'bharat'];
-    const isIndia = indiaIndicators.some(indicator => locationLower.includes(indicator));
-    
+    // Check for India
+    const isIndia = DevelopersService.INDIA_INDICATORS.some(indicator => locationLower.includes(indicator));
     if (!isIndia) {
       return { country: null, city: null };
     }
     
-    const cityMappings: Record<string, string> = {
-      'ahmedabad': 'Ahmedabad',
-      'amdavad': 'Ahmedabad',
-      'pune': 'Pune',
-      'bangalore': 'Bangalore',
-      'bengaluru': 'Bangalore',
-      'bangaluru': 'Bangalore',
-    };
-    
-    for (const [key, city] of Object.entries(cityMappings)) {
-      if (locationLower.includes(key)) {
-        return { country: 'India', city };
-      }
-    }
-    
-    if (isIndia) {
-      return { country: 'India', city: null };
-    }
-    
-    const parts = location.split(',').map(p => p.trim());
-    if (parts.length >= 2) {
-      const country = parts[parts.length - 1];
-      const city = parts[0];
-      
-      if (country.toLowerCase().includes('india') || country.toLowerCase() === 'in') {
-        const cityLower = city.toLowerCase();
-        for (const [key, mappedCity] of Object.entries(cityMappings)) {
-          if (cityLower.includes(key)) {
-            return { country: 'India', city: mappedCity };
-          }
-        }
-        return { country: 'India', city: null };
-      }
-    }
-    
-    return { country: null, city: null };
+    // Find city in India
+    const city = this.findCityInLocation(locationLower);
+    return { country: 'India', city };
   }
 
-  private extractCompany(userData: any, organizations: any[] = []): string | null {
-    const topMNCs = [
-      'Google', 'Microsoft', 'Amazon', 'Apple', 'Meta', 'Facebook',
-      'Netflix', 'Uber', 'Airbnb', 'Twitter', 'LinkedIn', 'Oracle',
-      'IBM', 'Intel', 'Adobe', 'Salesforce', 'VMware', 'Cisco',
-      'Nvidia', 'Tesla', 'PayPal', 'Stripe', 'Shopify', 'Spotify',
-      'GitHub', 'GitLab', 'Atlassian', 'MongoDB', 'Elastic', 'Databricks'
-    ];
-    
-    const topStartups = [
-      'OpenAI', 'Anthropic', 'Stability AI', 'Cohere', 'Hugging Face',
-      'Vercel', 'Supabase', 'Railway', 'Render', 'PlanetScale',
-      'Linear', 'Notion', 'Figma', 'Canva', 'Discord', 'Slack',
-      'Replit', 'CodeSandbox', 'TurboRepo', 'Prisma'
-    ];
-    
-    const allCompanies = [...topMNCs, ...topStartups];
-    
-    // First check organizations (primary source)
-    if (organizations && organizations.length > 0) {
-      for (const org of organizations) {
-        const orgLogin = org.login || org.name || '';
-        if (!orgLogin) continue;
-        
-        const orgLower = orgLogin.toLowerCase();
-        for (const knownCompany of allCompanies) {
-          const knownLower = knownCompany.toLowerCase();
-          if (orgLower === knownLower || 
-              orgLower.includes(knownLower) || 
-              knownLower.includes(orgLower)) {
-            return knownCompany;
-          }
-        }
-        // If no match found, return the organization login
-        return orgLogin;
+  private findCityInLocation(locationLower: string): string | null {
+    // Check direct city mappings
+    for (const [key, city] of Object.entries(DevelopersService.CITY_MAPPINGS)) {
+      if (locationLower.includes(key)) {
+        return city;
       }
     }
     
-    // Fallback to company field
-    if (userData.company) {
-      let company = userData.company.trim().replace(/^@/, '');
-      if (!company || company === '') return null;
-      
-      const companyLower = company.toLowerCase();
-      for (const knownCompany of allCompanies) {
-        const knownLower = knownCompany.toLowerCase();
-        if (companyLower === knownLower || 
-            companyLower.includes(knownLower) || 
-            knownLower.includes(companyLower)) {
-          return knownCompany;
+    // Check comma-separated format (city, country)
+    const parts = locationLower.split(',').map(p => p.trim());
+    if (parts.length >= 2) {
+      const cityPart = parts[0];
+      for (const [key, city] of Object.entries(DevelopersService.CITY_MAPPINGS)) {
+        if (cityPart.includes(key)) {
+          return city;
         }
       }
-      
-      return company;
     }
     
     return null;
   }
 
-  private determineProfileType(repos: any[], languages: Map<string, number>): string {
-    const languageCount = languages.size;
-    const diverseRepos = repos.filter(r => !r.fork && r.stargazers_count > 10).length;
+  private extractCompany(userData: any, organizations: any[] = []): string | null {
+    const orgCompany = this.findCompanyInOrganizations(organizations);
+    if (orgCompany) return orgCompany;
     
-    if (languageCount >= 3 || diverseRepos >= 5) {
-      return 'General';
+    return this.findCompanyInUserData(userData);
+  }
+
+  private findCompanyInOrganizations(organizations: any[]): string | null {
+    if (!organizations?.length) return null;
+    
+    const knownCompanies = this.getKnownCompaniesSet();
+    
+    for (const org of organizations) {
+      const orgLogin = (org.login || org.name || '').trim();
+      if (!orgLogin) continue;
+      
+      const matchedCompany = this.matchCompany(orgLogin, knownCompanies);
+      if (matchedCompany) return matchedCompany;
+      
+      return orgLogin.replace(/^@/, '');
     }
     
+    return null;
+  }
+
+  private findCompanyInUserData(userData: any): string | null {
+    const company = userData?.company?.trim().replace(/^@/, '');
+    if (!company) return null;
+    
+    const knownCompanies = this.getKnownCompaniesSet();
+    return this.matchCompany(company, knownCompanies) || company;
+  }
+
+  private matchCompany(companyName: string, knownCompanies: Set<string>): string | null {
+    const companyLower = companyName.toLowerCase();
+    
+    for (const knownCompany of knownCompanies) {
+      const knownLower = knownCompany.toLowerCase();
+      if (companyLower === knownLower || 
+          companyLower.includes(knownLower) || 
+          knownLower.includes(companyLower)) {
+        return knownCompany;
+      }
+    }
+    
+    return null;
+  }
+
+  private getKnownCompaniesSet(): Set<string> {
+    return new Set([
+      'Google', 'Microsoft', 'Amazon', 'Apple', 'Meta', 'Facebook',
+      'Netflix', 'Uber', 'Airbnb', 'Twitter', 'LinkedIn', 'Oracle',
+      'IBM', 'Intel', 'Adobe', 'Salesforce', 'VMware', 'Cisco',
+      'Nvidia', 'Tesla', 'PayPal', 'Stripe', 'Shopify', 'Spotify',
+      'GitHub', 'GitLab', 'Atlassian', 'MongoDB', 'Elastic', 'Databricks',
+      'OpenAI', 'Anthropic', 'Stability AI', 'Cohere', 'Hugging Face',
+      'Vercel', 'Supabase', 'Railway', 'Render', 'PlanetScale',
+      'Linear', 'Notion', 'Figma', 'Canva', 'Discord', 'Slack',
+      'Replit', 'CodeSandbox', 'TurboRepo', 'Prisma'
+    ]);
+  }
+
+  private buildLocationQuery(country: string | null | undefined, city: string | null | undefined): string | null {
+    if (city) {
+      const cityQueries: Record<string, string> = {
+        'San Francisco': 'location:"San Francisco" followers:>50',
+      };
+      
+      if (cityQueries[city]) return cityQueries[city];
+      if (country === 'India') return `location:"${city}, India" followers:>50`;
+      return `location:"${city}" followers:>50`;
+    }
+    
+    if (country) {
+      const countryQueries: Record<string, string> = {
+        'India': 'location:India followers:>100',
+        'United States': 'location:"United States" followers:>100',
+      };
+      
+      return countryQueries[country] || `location:"${country}" followers:>100`;
+    }
+    
+    return null;
+  }
+
+  private async searchUsersByQuery(query: string, limit: number, discoveredUsernames: Set<string>): Promise<boolean> {
+    try {
+      const users = await this.githubService.searchUsers(query, limit);
+      if (users.items) {
+        users.items
+          .filter(user => user.login && !user.login.includes('[bot]'))
+          .forEach(user => discoveredUsernames.add(user.login));
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+      return false;
+    } catch (error: any) {
+      if (error.status === 429 || error.status === 403) {
+        console.warn('GitHub API rate limit reached. Skipping auto-discovery to avoid further rate limits.');
+        return true;
+      }
+      console.error(`Error in location discovery:`, error.message);
+      return false;
+    }
+  }
+
+  private determineProfileType(repos: any[], languages: Map<string, number>): string {
+    // Currently all developers are classified as 'General'
+    // This can be extended in the future with more sophisticated logic
     return 'General';
   }
 
@@ -392,72 +325,47 @@ export class DevelopersService {
       const lastActiveAt = repos.length > 0 && repos[0].updated_at
         ? new Date(repos[0].updated_at)
         : new Date();
-      const prImpact = this.calculatePRImpact(totalPRs, Math.floor(totalPRs * 0.7), totalStarsReceived);
-      const issueImpact = this.calculateIssueImpact(totalIssues, Math.floor(totalIssues * 0.6), totalIssues * 2);
-      const dependencyInfluence = this.calculateDependencyInfluence(0, totalStarsReceived); // Simplified
-      const projectLongevity = this.calculateProjectLongevity(yearsActive, activeProjects, lastActiveAt);
-      const communityImpact = this.calculateCommunityImpact(
-        userData.followers || 0,
-        totalPRs + totalCommits + totalIssues,
-        totalStarsReceived
-      );
-      const docsImpact = this.calculateDocsImpact(Math.floor(totalPRs * 0.1), Math.floor(totalCommits * 0.05));
-      const consistency = this.calculateConsistency(
+      
+      const developer = await this.developerRepository.findOne({ where: { githubUsername: username } })
+        ?? this.developerRepository.create({ githubUsername: username });
+      
+      // Update developer data
+      Object.assign(developer, {
+        name: userData.name || username,
+        bio: userData.bio || null,
+        avatarUrl: userData.avatar_url || null,
+        profileUrl: userData.html_url || null,
+        followers: userData.followers || 0,
+        following: userData.following || 0,
+        publicRepos: userData.public_repos || 0,
+        country,
+        city,
+        location: userData.location || null,
+        company,
+        profileType: this.determineProfileType(repos, languages),
+        githubCreatedAt,
+        lastActiveAt,
+        yearsActive: Math.floor(yearsActive),
+        activeProjects,
+        topLanguages: Array.from(languages.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([lang]) => lang),
+        topRepositories: topRepos,
+        totalPRs,
         totalCommits,
-        yearsActive,
-        totalCommits / Math.max(yearsActive * 12, 1)
-      );
-      const qualityMultiplier = this.calculateQualityMultiplier(0.6, 0.5, 20);
+        totalIssues,
+        totalLinesAdded,
+        totalLinesDeleted,
+        totalContributions: totalPRs + totalCommits + totalIssues,
+        totalStarsReceived,
+        totalForksReceived,
+        finalImpactScore: 0, // Will be calculated below
+        lastCalculatedAt: new Date(),
+      });
       
-      let developer = await this.developerRepository.findOne({ where: { githubUsername: username } });
-      
-      if (!developer) {
-        developer = this.developerRepository.create({
-          githubUsername: username,
-        });
-      }
-      developer.name = userData.name || username;
-      developer.bio = userData.bio || null;
-      developer.avatarUrl = userData.avatar_url || null;
-      developer.profileUrl = userData.html_url || null;
-      developer.followers = userData.followers || 0;
-      developer.following = userData.following || 0;
-      developer.publicRepos = userData.public_repos || 0;
-      developer.country = country;
-      developer.city = city;
-      developer.location = userData.location || null;
-      developer.company = company;
-      developer.profileType = this.determineProfileType(repos, languages);
-      developer.githubCreatedAt = githubCreatedAt;
-      developer.lastActiveAt = lastActiveAt;
-      developer.yearsActive = Math.floor(yearsActive);
-      developer.activeProjects = activeProjects;
-      developer.topLanguages = Array.from(languages.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([lang]) => lang);
-      developer.topRepositories = topRepos;
-      
-      developer.prImpact = prImpact;
-      developer.issueImpact = issueImpact;
-      developer.dependencyInfluence = dependencyInfluence;
-      developer.projectLongevity = projectLongevity;
-      developer.communityImpact = communityImpact;
-      developer.docsImpact = docsImpact;
-      developer.consistency = consistency;
-      developer.qualityMultiplier = qualityMultiplier;
-      
-      developer.totalPRs = totalPRs;
-      developer.totalCommits = totalCommits;
-      developer.totalIssues = totalIssues;
-      developer.totalLinesAdded = totalLinesAdded;
-      developer.totalLinesDeleted = totalLinesDeleted;
-      developer.totalContributions = totalPRs + totalCommits + totalIssues;
-      developer.totalStarsReceived = totalStarsReceived;
-      developer.totalForksReceived = totalForksReceived;
-      
+      // Calculate final impact score using simplified method
       developer.finalImpactScore = this.calculateImpactScore(developer);
-      developer.lastCalculatedAt = new Date();
       
       return await this.developerRepository.save(developer);
     } catch (error) {
@@ -498,24 +406,7 @@ export class DevelopersService {
       .createQueryBuilder('developer')
       .orderBy('developer.finalImpactScore', 'DESC');
     
-    // If company filter is selected, ignore location filters
-    if (company && company !== '' && company !== 'All Companies') {
-      // Case-insensitive company matching
-      queryBuilder.andWhere('LOWER(developer.company) = LOWER(:company)', { company });
-    } else if (country || city) {
-      // Only apply location filters if company is not selected
-      if (country && country !== '' && country !== 'All Locations') {
-        queryBuilder.andWhere('developer.country = :country', { country });
-      }
-      
-      if (city && city !== '' && city !== 'All Cities') {
-        queryBuilder.andWhere('developer.city = :city', { city });
-      }
-    }
-
-    if (profileType && profileType !== '' && profileType !== 'All Profile Types') {
-      queryBuilder.andWhere('developer.profileType = :profileType', { profileType });
-    }
+    this.applyFiltersToQuery(queryBuilder, { company, country, city, profileType });
     
     const [developers, total] = await queryBuilder
       .skip(offset)
@@ -539,6 +430,45 @@ export class DevelopersService {
 
   async getDeveloperByUsername(username: string): Promise<Developer | null> {
     return await this.developerRepository.findOne({ where: { githubUsername: username } });
+  }
+
+  async countDevelopersByFilters(
+    company?: string | null,
+    country?: string | null,
+    city?: string | null
+  ): Promise<number> {
+    const queryBuilder = this.developerRepository.createQueryBuilder('developer');
+    this.applyFiltersToQuery(queryBuilder, { company, country, city });
+    return await queryBuilder.getCount();
+  }
+
+  private applyFiltersToQuery(
+    queryBuilder: any,
+    filters: { company?: string | null; country?: string | null; city?: string | null; profileType?: string | null }
+  ): void {
+    const { company, country, city, profileType } = filters;
+    const isValidFilter = (value: string | null | undefined, excludeValues: string[]): boolean => {
+      return !!(value && value.trim() !== '' && !excludeValues.includes(value));
+    };
+
+    // Company filter takes precedence over location filters
+    if (isValidFilter(company, ['All Companies'])) {
+      queryBuilder.andWhere('LOWER(developer.company) = LOWER(:company)', { company });
+      return; // Early return - ignore location filters when company is set
+    }
+
+    // Apply location filters only if company is not set
+    if (isValidFilter(country, ['All Locations'])) {
+      queryBuilder.andWhere('developer.country = :country', { country });
+    }
+
+    if (isValidFilter(city, ['All Cities'])) {
+      queryBuilder.andWhere('developer.city = :city', { city });
+    }
+
+    if (isValidFilter(profileType, ['All Profile Types'])) {
+      queryBuilder.andWhere('developer.profileType = :profileType', { profileType });
+    }
   }
 
   async getAvailableCountries(): Promise<string[]> {
@@ -694,57 +624,20 @@ export class DevelopersService {
 
       if (!developer) {
         const countQuery = this.developerRepository.createQueryBuilder('developer');
-        if (company && company !== '' && company !== 'All Companies') {
-          countQuery.andWhere('developer.company = :company', { company });
-        } else if (country || city) {
-          if (country && country !== '' && country !== 'All Locations') {
-            countQuery.andWhere('developer.country = :country', { country });
-          }
-          if (city && city !== '' && city !== 'All Cities') {
-            countQuery.andWhere('developer.city = :city', { city });
-          }
-        }
-        if (profileType && profileType !== '' && profileType !== 'All Profile Types') {
-          countQuery.andWhere('developer.profileType = :profileType', { profileType });
-        }
+        this.applyFiltersToQuery(countQuery, { company, country, city, profileType });
         const total = await countQuery.getCount();
         return { rank: 0, total, developer: null };
       }
 
       const countQuery = this.developerRepository.createQueryBuilder('developer');
-      if (company && company !== '' && company !== 'All Companies') {
-        countQuery.andWhere('LOWER(developer.company) = LOWER(:company)', { company });
-      } else if (country || city) {
-        if (country && country !== '' && country !== 'All Locations') {
-          countQuery.andWhere('developer.country = :country', { country });
-        }
-        if (city && city !== '' && city !== 'All Cities') {
-          countQuery.andWhere('developer.city = :city', { city });
-        }
-      }
-      if (profileType && profileType !== '' && profileType !== 'All Profile Types') {
-        countQuery.andWhere('developer.profileType = :profileType', { profileType });
-      }
+      this.applyFiltersToQuery(countQuery, { company, country, city, profileType });
       const total = await countQuery.getCount();
 
       const rankQuery = this.developerRepository
         .createQueryBuilder('developer')
         .where('developer.finalImpactScore > :score', { score: developer.finalImpactScore });
       
-      if (company && company !== '' && company !== 'All Companies') {
-        rankQuery.andWhere('LOWER(developer.company) = LOWER(:company)', { company });
-      } else if (country || city) {
-        if (country && country !== '' && country !== 'All Locations') {
-          rankQuery.andWhere('developer.country = :country', { country });
-        }
-        if (city && city !== '' && city !== 'All Cities') {
-          rankQuery.andWhere('developer.city = :city', { city });
-        }
-      }
-      if (profileType && profileType !== '' && profileType !== 'All Profile Types') {
-        rankQuery.andWhere('developer.profileType = :profileType', { profileType });
-      }
-      
+      this.applyFiltersToQuery(rankQuery, { company, country, city, profileType });
       const rank = await rankQuery.getCount() + 1;
       
       return { rank, total, developer };
@@ -930,86 +823,23 @@ export class DevelopersService {
     }
   }
 
-  public async fastAutoDiscoverBatch(batchSize: number = 20): Promise<number> {
+  public async fastAutoDiscoverBatch(batchSize: number = 20, country?: string | null, city?: string | null): Promise<number> {
     const discoveredUsernames = new Set<string>();
     let rateLimited = false;
     
-    try {
-      const indiaUsers = await this.githubService.searchUsers('location:India followers:>100', batchSize * 2);
-      if (indiaUsers.items) {
-        for (const user of indiaUsers.items) {
-          if (user.login && !user.login.includes('[bot]')) {
-            discoveredUsernames.add(user.login);
-          }
-        }
+    // Build location query using strategy pattern
+    if (country || city) {
+      const searchQuery = this.buildLocationQuery(country, city);
+      if (searchQuery) {
+        rateLimited = await this.searchUsersByQuery(searchQuery, batchSize * 2, discoveredUsernames);
+        if (rateLimited) return 0;
       }
-      await new Promise(resolve => setTimeout(resolve, 500));
-    } catch (error: any) {
-      if (error.status === 429 || error.status === 403) {
-        rateLimited = true;
-        console.warn('GitHub API rate limit reached. Skipping auto-discovery to avoid further rate limits.');
-      } else {
-        console.error('Error in India location discovery:', error.message);
-      }
-    }
-    
-    if (rateLimited) {
-      console.log('Auto-discovery skipped due to rate limiting. Please add GITHUB_TOKEN for higher limits.');
-      return 0;
-    }
-    
-    try {
-      const sfQueries = [
-        'location:"San Francisco" followers:>100',
-        'location:"San Francisco, CA" followers:>100',
-      ];
-      
-      for (const query of sfQueries) {
-        try {
-          const sfUsers = await this.githubService.searchUsers(query, 15);
-          if (sfUsers.items) {
-            for (const user of sfUsers.items) {
-              if (user.login && !user.login.includes('[bot]')) {
-                discoveredUsernames.add(user.login);
-              }
-            }
-          }
-          await new Promise(resolve => setTimeout(resolve, 500));
-        } catch (error: any) {
-          if (error.status === 429 || error.status === 403) {
-            rateLimited = true;
-            break;
-          }
-          console.error(`Error searching SF with query ${query}:`, error.message);
-        }
-      }
-    } catch (error: any) {
-      if (error.status === 429 || error.status === 403) {
-        rateLimited = true;
-      } else {
-        console.error('Error in SF location discovery:', error.message);
-      }
-    }
-    
-    if (rateLimited) {
-      console.log('Auto-discovery stopped due to rate limiting.');
-      return 0;
-    }
-    
-    const targetCities = [
-      { name: 'Ahmedabad', query: 'location:"Ahmedabad, India"', minFollowers: 50 },
-      { name: 'Pune', query: 'location:"Pune, India"', minFollowers: 50 },
-      { name: 'Bangalore', query: 'location:"Bangalore, India"', minFollowers: 50 },
-      { name: 'San Francisco', query: 'location:"San Francisco"', minFollowers: 50 },
-    ];
-    
-    for (const city of targetCities) {
-      if (rateLimited) break;
-      
+    } else {
+      // Default behavior: search all locations
       try {
-        const cityUsers = await this.githubService.searchUsers(`${city.query} followers:>${city.minFollowers}`, 10);
-        if (cityUsers.items) {
-          for (const user of cityUsers.items) {
+        const indiaUsers = await this.githubService.searchUsers('location:India followers:>100', batchSize * 2);
+        if (indiaUsers.items) {
+          for (const user of indiaUsers.items) {
             if (user.login && !user.login.includes('[bot]')) {
               discoveredUsernames.add(user.login);
             }
@@ -1019,10 +849,83 @@ export class DevelopersService {
       } catch (error: any) {
         if (error.status === 429 || error.status === 403) {
           rateLimited = true;
-          console.warn(`Rate limit reached while searching ${city.name}. Stopping auto-discovery.`);
-          break;
+          console.warn('GitHub API rate limit reached. Skipping auto-discovery to avoid further rate limits.');
+        } else {
+          console.error('Error in India location discovery:', error.message);
         }
-        console.error(`Error searching ${city.name}:`, error.message);
+      }
+      
+      if (rateLimited) {
+        console.log('Auto-discovery skipped due to rate limiting. Please add GITHUB_TOKEN for higher limits.');
+        return 0;
+      }
+      
+      try {
+        const sfQueries = [
+          'location:"San Francisco" followers:>100',
+          'location:"San Francisco, CA" followers:>100',
+        ];
+        
+        for (const query of sfQueries) {
+          try {
+            const sfUsers = await this.githubService.searchUsers(query, 15);
+            if (sfUsers.items) {
+              for (const user of sfUsers.items) {
+                if (user.login && !user.login.includes('[bot]')) {
+                  discoveredUsernames.add(user.login);
+                }
+              }
+            }
+            await new Promise(resolve => setTimeout(resolve, 500));
+          } catch (error: any) {
+            if (error.status === 429 || error.status === 403) {
+              rateLimited = true;
+              break;
+            }
+            console.error(`Error searching SF with query ${query}:`, error.message);
+          }
+        }
+      } catch (error: any) {
+        if (error.status === 429 || error.status === 403) {
+          rateLimited = true;
+        } else {
+          console.error('Error in SF location discovery:', error.message);
+        }
+      }
+      
+      if (rateLimited) {
+        console.log('Auto-discovery stopped due to rate limiting.');
+        return 0;
+      }
+      
+      const targetCities = [
+        { name: 'Ahmedabad', query: 'location:"Ahmedabad, India"', minFollowers: 50 },
+        { name: 'Pune', query: 'location:"Pune, India"', minFollowers: 50 },
+        { name: 'Bangalore', query: 'location:"Bangalore, India"', minFollowers: 50 },
+        { name: 'San Francisco', query: 'location:"San Francisco"', minFollowers: 50 },
+      ];
+      
+      for (const city of targetCities) {
+        if (rateLimited) break;
+        
+        try {
+          const cityUsers = await this.githubService.searchUsers(`${city.query} followers:>${city.minFollowers}`, 10);
+          if (cityUsers.items) {
+            for (const user of cityUsers.items) {
+              if (user.login && !user.login.includes('[bot]')) {
+                discoveredUsernames.add(user.login);
+              }
+            }
+          }
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (error: any) {
+          if (error.status === 429 || error.status === 403) {
+            rateLimited = true;
+            console.warn(`Rate limit reached while searching ${city.name}. Stopping auto-discovery.`);
+            break;
+          }
+          console.error(`Error searching ${city.name}:`, error.message);
+        }
       }
     }
     
@@ -1160,6 +1063,145 @@ export class DevelopersService {
     }
     
     return Array.from(orgNames);
+  }
+
+  /**
+   * Batch discover developers for multiple companies with only 2-3 API calls
+   * Groups companies into batches and uses OR queries to minimize API calls
+   */
+  public async batchDiscoverDevelopersByCompanies(
+    companies: string[],
+    maxCompanies: number = 20,
+    perPage: number = 30
+  ): Promise<number> {
+    const validCompanies = companies.filter(
+      c => c && c !== 'All Companies' && c.trim() !== ''
+    );
+
+    if (validCompanies.length === 0) {
+      return 0;
+    }
+
+    // Filter out companies that already have 100+ developers
+    const companiesToFetch: string[] = [];
+    for (const company of validCompanies) {
+      const count = await this.countDevelopersByFilters(company, null, null);
+      if (count < 100) {
+        companiesToFetch.push(company);
+      }
+    }
+
+    if (companiesToFetch.length === 0) {
+      console.log('All companies already have 100+ developers, skipping batch discovery');
+      return 0;
+    }
+
+    // Limit number of companies to process per run to avoid rate limits
+    const companiesToProcess = companiesToFetch.slice(0, maxCompanies);
+    console.log(`Processing ${companiesToProcess.length} companies (one API call per company, max ${maxCompanies} per run)`);
+
+    const discoveredUsernames = new Set<string>();
+    let rateLimited = false;
+    let processedCount = 0;
+
+    // Process companies one at a time (GitHub doesn't like OR queries with multiple companies)
+    for (let index = 0; index < companiesToProcess.length && !rateLimited; index++) {
+      const company = companiesToProcess[index];
+      
+      try {
+        // Escape quotes in company name
+        const escapedCompany = company.replace(/"/g, '\\"');
+        const query = `company:"${escapedCompany}" followers:>50`;
+        
+        if ((index + 1) % 5 === 0) {
+          console.log(`Processing company ${index + 1}/${companiesToProcess.length}: ${company}`);
+        }
+        
+        const result = await this.githubService.searchUsers(query, perPage);
+        
+        if (result.items && result.items.length > 0) {
+          result.items
+            .filter(user => user.login && !user.login.includes('[bot]'))
+            .forEach(user => discoveredUsernames.add(user.login));
+          processedCount++;
+        }
+        
+        // Delay between API calls to avoid rate limits (2 seconds per call)
+        // This ensures we stay well under GitHub's rate limits
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } catch (error: any) {
+        if (error.status === 429 || error.status === 403) {
+          rateLimited = true;
+          console.warn(`Rate limit reached after processing ${index} companies. Stopping company discovery.`);
+          console.warn('Consider adding GITHUB_TOKEN for higher rate limits (5000 requests/hour vs 60 without token).');
+          break;
+        } else if (error.status === 422) {
+          // Invalid query - skip this company and continue
+          console.warn(`Invalid query for company "${company}", skipping`);
+          continue;
+        } else {
+          console.error(`Error searching company "${company}":`, error.message);
+          // Continue with next company
+        }
+      }
+    }
+
+    if (rateLimited) {
+      console.warn('Batch discovery stopped due to rate limits');
+      return 0;
+    }
+
+    console.log(`Total unique developers discovered: ${discoveredUsernames.size}`);
+
+    // Process discovered developers in parallel (with concurrency limit)
+    const usernamesArray = Array.from(discoveredUsernames);
+    let processed = 0;
+    const concurrency = 5; // Process 5 developers at a time
+
+    for (let i = 0; i < usernamesArray.length; i += concurrency) {
+      const batch = usernamesArray.slice(i, i + concurrency);
+
+      await Promise.all(
+        batch.map(async (username) => {
+          try {
+            // Check if developer already exists (ensures uniqueness)
+            const existing = await this.developerRepository.findOne({
+              where: { githubUsername: username }
+            });
+
+            // Skip if recently calculated (within 7 days)
+            if (existing && existing.lastCalculatedAt) {
+              const daysSinceCalc = (Date.now() - new Date(existing.lastCalculatedAt).getTime()) / (1000 * 60 * 60 * 24);
+              if (daysSinceCalc < 7) {
+                return;
+              }
+            }
+
+            // Fetch and calculate developer (this handles upsert - no duplicates)
+            // The database has a unique constraint on githubUsername, so duplicates are prevented
+            const developer = await this.fetchAndCalculateDeveloper(username, true);
+            if (developer) {
+              processed++;
+            }
+          } catch (error: any) {
+            // Handle duplicate key errors gracefully (can happen in parallel processing)
+            if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('UNIQUE constraint')) {
+              // Developer already exists, skip silently
+              return;
+            }
+            console.error(`Error processing ${username}:`, error.message || error);
+          }
+        })
+      );
+
+      // Small delay between batches to avoid overwhelming the system
+      if (i + concurrency < usernamesArray.length) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    }
+
+    console.log(`Batch discovery completed: ${processed} developers processed from ${discoveredUsernames.size} discovered`);
+    return processed;
   }
 
   public async discoverDevelopersByCompany(company: string, limit: number = 50, minRequired: number = 15): Promise<number> {
